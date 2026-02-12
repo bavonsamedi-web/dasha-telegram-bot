@@ -9,6 +9,8 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+AUTHORIZED_USER_ID = 6251832936  # ТОЛЬКО ТЫ
+
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 conversation_memory = {}
@@ -146,7 +148,4 @@ def proactive_messages():
                 pass
 
 
-threading.Thread(target=proactive_messages, daemon=True).start()
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+threading.Thread(target=proactive_mes
