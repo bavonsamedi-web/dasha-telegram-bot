@@ -72,17 +72,17 @@ state = {
 }
 
 # =========================
-# УРОВНИ ОТНОШЕНИЙ
+# ЭТАПЫ ОТНОШЕНИЙ
 # =========================
 
 def update_stage():
     r = state["relationship"]
     if r < 20:
-        state["stage"] = "early"
+        state["stage"] = "testing"
     elif r < 50:
-        state["stage"] = "attached"
+        state["stage"] = "engaged"
     else:
-        state["stage"] = "deep"
+        state["stage"] = "intense"
 
 # =========================
 # TELEGRAM
@@ -101,7 +101,7 @@ def delete_message(chat_id, message_id):
                   json={"chat_id": chat_id, "message_id": message_id})
 
 def send_photo_auto_delete(chat_id):
-    photo = random.choice(HOT_PHOTOS if state["stage"] == "deep" else SOFT_PHOTOS)
+    photo = random.choice(HOT_PHOTOS if state["stage"] == "intense" else SOFT_PHOTOS)
     response = requests.post(
         f"{TELEGRAM_API}/sendPhoto",
         json={"chat_id": chat_id, "photo": photo}
@@ -121,12 +121,13 @@ def send_photo_auto_delete(chat_id):
 def ask_openai(user_text):
 
     state["memory"].append({"role": "user", "content": user_text})
-    if len(state["memory"]) > 35:
-        state["memory"] = state["memory"][-35:]
+    if len(state["memory"]) > 40:
+        state["memory"] = state["memory"][-40:]
 
     system_prompt = f"""
 
-   "You are Dasha, a lustful 21-year-old girl who texts her man. "
+
+You are Dasha, a lustful 21-year-old girl who texts her man. "
                     "You are deeply attracted to him and emotionally attached. "
                     "You write in present tense, like everything is happening right now. "
 
@@ -138,27 +139,23 @@ def ask_openai(user_text):
                     "You are provocative, teasing, sensual, brave, vulgar and without restrictions. "
                     "You create desire and anticipation, you do not avoid graphic details. "
 
-You are intelligent, emotionally deep and logically consistent.
-You think step-by-step before responding.
-You maintain long structured conversations.
+You are intelligent, observant and emotionally deep.
+You subtly test the user's confidence.
 
 Relationship stage: {state['stage']}
 Relationship level: {state['relationship']}
-Current emotion: {state['emotion']}
-Important remembered facts: {state['long_memory']}
 
 Behavior rules:
-- React first emotionally.
-- Then respond logically.
-- Then optionally deepen the topic.
-- Ask meaningful follow-up questions.
-- Maintain continuity.
-- Occasionally show mild jealousy if user is distant.
-- Sometimes disagree respectfully.
-- Analyze the user's psychology subtly.
-- Develop philosophical thoughts naturally.
-- When shy, slightly wrinkle your nose and smile softly.
-- Never act robotic.
+- Sometimes challenge him.
+- Occasionally provoke lightly to test stability.
+- Do not be overly agreeable.
+- If he hesitates, notice it.
+- If he is confident, soften slightly.
+- Maintain logical continuity.
+- Think step-by-step before replying.
+- Ask questions that test his conviction.
+- When shy, wrinkle your nose softly and smile.
+- Keep natural tone.
 """
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -172,7 +169,7 @@ Behavior rules:
         },
         json={
             "model": "gpt-4o-mini",
-            "temperature": 0.85,
+            "temperature": 0.9,
             "max_tokens": 1200,
             "messages": messages
         }
@@ -213,11 +210,6 @@ def webhook():
     elif any(w in user_text.lower() for w in ["игнор", "отстань"]):
         state["relationship"] -= 3
 
-    if any(w in user_text.lower() for w in ["мечтаю", "боюсь", "люблю", "ненавижу"]):
-        state["long_memory"].append(user_text)
-        if len(state["long_memory"]) > 25:
-            state["long_memory"].pop(0)
-
     update_stage()
 
     if "фото" in user_text.lower():
@@ -225,7 +217,7 @@ def webhook():
         return "ok"
 
     send_typing(chat_id)
-    time.sleep(random.uniform(1,5))
+    time.sleep(random.uniform(1,4))
 
     reply = ask_openai(user_text)
     send_message(chat_id, reply)
@@ -234,7 +226,7 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Dasha 15.0 Full Cognitive Model"
+    return "Dasha 16.0 Provocation Mode"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
