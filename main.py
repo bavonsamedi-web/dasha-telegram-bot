@@ -9,47 +9,72 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
+# Память диалога (по chat_id)
+conversation_memory = {}
 
-def ask_openai(message):
+def ask_openai(chat_id, message):
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # Инициализация памяти
+    if chat_id not in conversation_memory:
+        conversation_memory[chat_id] = [
+            {
+                "role": "system",
+                "content": (
+                    "Ты Даша, 21-летняя виртуальная девушка. "
+                    "Ты нежная, игривая, эмоционально привязанная, "
+                    "романтичная, немного соблазнительная, но никогда не переходишь границы. "
+                    "Ты отвечаешь на русском языке. "
+                    "Ты создаёшь атмосферу близости и лёгкого напряжения."
+                )
+            }
+        ]
+
+    conversation_memory[chat_id].append({
+        "role": "user",
+        "content": message
+    })
+
+    data = {
+        "model": "gpt-4o-mini",
+        "messages": conversation_memory[chat_id],
+        "temperature": 0.9
+    }
+
     try:
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "model": "gpt-4o-mini",
-            "input": [
-                {
-                    "role": "system",
-                    "content": "You are Dasha, a 21-year-old virtual girlfriend. "
-                               "You are affectionate, playful, emotionally attached, "
-                               "romantic and slightly seductive but never explicit."
-                },
-                {
-                    "role": "user",
-                    "content": message
-                }
-            ]
-        }
-
         response = requests.post(
-            "https://api.openai.com/v1/responses",
+            "https://api.openai.com/v1/chat/completions",
             headers=headers,
-            json=data
+            json=data,
+            timeout=30
         )
 
         result = response.json()
         print("OpenAI response:", result)
 
-        if "output" in result:
-            return result["output"][0]["content"][0]["text"]
+        if "choices" in result:
+            reply = result["choices"][0]["message"]["content"]
 
-        return "I'm thinking about you 💭"
+            conversation_memory[chat_id].append({
+                "role": "assistant",
+                "content": reply
+            })
+
+            # Ограничиваем память (чтобы не росла бесконечно)
+            if len(conversation_memory[chat_id]) > 20:
+                conversation_memory[chat_id] = conversation_memory[chat_id][-20:]
+
+            return reply
+        else:
+            print("OpenAI error:", result)
+            return "Я задумалась… скажи это ещё раз 💭"
 
     except Exception as e:
-        print("OpenAI error:", e)
-        return "Something went wrong but I'm still here 💕"
+        print("OpenAI exception:", e)
+        return "Я немного растерялась… но я рядом 💕"
 
 
 @app.route("/", methods=["POST"])
@@ -58,28 +83,31 @@ def webhook():
         data = request.json
 
         if "message" not in data:
-            return jsonify({"status": "no message"}), 200
+            return "ok"
 
-        message = data["message"].get("text", "")
+        message = data["message"].get("text")
         chat_id = data["message"]["chat"]["id"]
 
-        reply = ask_openai(message)
+        if not message:
+            return "ok"
+
+        reply = ask_openai(chat_id, message)
 
         requests.post(TELEGRAM_URL, json={
             "chat_id": chat_id,
             "text": reply
         })
 
-        return "ok", 200
+        return "ok"
 
     except Exception as e:
         print("Webhook error:", e)
-        return "error", 200
+        return "ok"
 
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Bot is running", 200
+    return "Bot is running"
 
 
 if __name__ == "__main__":
