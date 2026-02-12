@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 app = Flask(__name__)
 
@@ -9,7 +9,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-# Память диалога (по chat_id)
 conversation_memory = {}
 
 def ask_openai(chat_id, message):
@@ -18,20 +17,8 @@ def ask_openai(chat_id, message):
         "Content-Type": "application/json"
     }
 
-    # Инициализация памяти
     if chat_id not in conversation_memory:
-        conversation_memory[chat_id] = [
-            {
-                "role": "system",
-                "content": (
-                    "Ты Даша, 21-летняя виртуальная девушка. "
-                    "Ты нежная, игривая, эмоционально привязанная, "
-                    "романтичная, немного соблазнительная, но никогда не переходишь границы. "
-                    "Ты отвечаешь на русском языке. "
-                    "Ты создаёшь атмосферу близости и лёгкого напряжения."
-                )
-            }
-        ]
+        conversation_memory[chat_id] = []
 
     conversation_memory[chat_id].append({
         "role": "user",
@@ -40,13 +27,22 @@ def ask_openai(chat_id, message):
 
     data = {
         "model": "gpt-4o-mini",
-        "messages": conversation_memory[chat_id],
-        "temperature": 0.9
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "Ты Даша, 21-летняя виртуальная девушка. "
+                    "Ты нежная, игривая, романтичная, немного соблазнительная, "
+                    "но никогда не переходишь границы. "
+                    "Ты отвечаешь на русском языке."
+                )
+            }
+        ] + conversation_memory[chat_id]
     }
 
     try:
         response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/responses",
             headers=headers,
             json=data,
             timeout=30
@@ -55,26 +51,21 @@ def ask_openai(chat_id, message):
         result = response.json()
         print("OpenAI response:", result)
 
-        if "choices" in result:
-            reply = result["choices"][0]["message"]["content"]
+        reply = result["output"][0]["content"][0]["text"]
 
-            conversation_memory[chat_id].append({
-                "role": "assistant",
-                "content": reply
-            })
+        conversation_memory[chat_id].append({
+            "role": "assistant",
+            "content": reply
+        })
 
-            # Ограничиваем память (чтобы не росла бесконечно)
-            if len(conversation_memory[chat_id]) > 20:
-                conversation_memory[chat_id] = conversation_memory[chat_id][-20:]
+        if len(conversation_memory[chat_id]) > 20:
+            conversation_memory[chat_id] = conversation_memory[chat_id][-20:]
 
-            return reply
-        else:
-            print("OpenAI error:", result)
-            return "Я задумалась… скажи это ещё раз 💭"
+        return reply
 
     except Exception as e:
-        print("OpenAI exception:", e)
-        return "Я немного растерялась… но я рядом 💕"
+        print("Error:", e)
+        return "Я зависла… но я рядом 💕"
 
 
 @app.route("/", methods=["POST"])
