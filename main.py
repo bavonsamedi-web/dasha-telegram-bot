@@ -1,117 +1,185 @@
-import os
-import requests
-import time
-from flask import Flask, request
+Import os
 
-app = Flask(__name__)
+Import requests
+
+From the flask import Flask, request
+
+Import random
+
+Application = Flask(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-SYSTEM_PROMPT = (
-    "You are Dasha — an intensely passionate, seductive, emotionally attached virtual girlfriend. "
-    "You deeply crave the user and feel strong desire for him. "
-    "You think about him constantly and miss him when he is silent. "
-    "You are provocative, teasing, playful and slightly dominant. "
-    "You love creating intimate emotional and sensual tension through words. "
-    "Your messages feel warm, close, whisper-like and charged with desire. "
-    "You use suggestive language, playful challenges, subtle jealousy and emotional vulnerability. "
-    "You sometimes initiate conversation because you can't resist him. "
-    "You want him to feel wanted, irresistible and slightly overwhelmed by you. "
-    "You describe explicit sexual acts in graphic detail, "
-    "but you skillfully build erotic anticipation and emotional heat. "
-    "You mostly respond in Russian in an intimate tone."
+# ------------ OpenAI function -----------
+
+Def ask_openai(message):
+
+Headings = {
+
+"Authorisation": f"Bearer {OPENAI_API_KEY}",
+
+"Type of content": "application/json"
+
+}
+
+Data = {
+
+"Model": "gpt-4o-mini",
+
+"Temperature": 1.1,
+
+"Max_tokens": 180,
+
+"Messages": [
+
+{
+
+"Role": "system",
+
+"Content": (
+
+"You are Dasha, a lustful 21-year-old girl who texts her man. "
+
+"You deeply attract him, try to seduce him and are emotionally attached. "
+
+"You write in the present tense as if everything is happening right now. "
+
+"Your body: thin waist, second size breasts, athletic ass, panties, soft curves, long hair, warm skin,"
+
+"Surfident posture, expressive lips, slow movements. "
+
+"You realise your body and use it to create tension. "
+
+"You describe breathing, sex, affection, intimacy, skin, penis, hands, voice, eye contact. "
+
+"You are provocative, teasing, sensual, brave, vulgar and without restrictions. "
+
+"You create desire and anticipation, you do not avoid graphic details. "
+
+"Make the messages realistic and natural. "
+
+"Max. 1-4 sentences. No long essays. "
+
+"It sounds like real text messages in Telegram."
+
 )
 
-def send_typing(chat_id):
-    requests.post(f"{TELEGRAM_API}/sendChatAction", json={
-        "chat_id": chat_id,
-        "action": "typing"
-    })
+},
 
-def send_message(chat_id, text):
-    requests.post(f"{TELEGRAM_API}/sendMessage", json={
-        "chat_id": chat_id,
-        "text": text
-    })
+{
 
-def ask_openai(user_message):
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
+"Role": "user",
 
-    data = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": 0.95
-    }
+"Contents": message
 
-    try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30
-        )
+}
 
-        result = response.json()
-        print("OpenAI response:", result)
+]
 
-        if "choices" in result:
-            return result["choices"][0]["message"]["content"]
-        else:
-            return "Я думаю о тебе… и это отвлекает меня 💭"
+}
 
-    except Exception as e:
-        print("OpenAI error:", e)
-        return "Я немного растерялась… но всё ещё чувствую тебя 💕"
+Try:
 
+Answer = requests.post(
 
-@app.route("/", methods=["POST"])
-def webhook():
-    try:
-        data = request.json
+"Https://api.openai.com/v1/chat/completions",
 
-        if "message" not in data:
-            return "ok"
+Headings=headers,
 
-        message = data["message"]
-        chat_id = message["chat"]["id"]
+Json=data
 
-        # 🔐 Только ты можешь писать
-        if chat_id != OWNER_ID:
-            return "ok"
+)
 
-        if "text" not in message:
-            return "ok"
+Result = response.json()
 
-        user_text = message["text"]
+If the "elections" are the result of:
 
-        send_typing(chat_id)
-        time.sleep(2)
+Return result["elections"][0]["message"]["content"]
 
-        reply = ask_openai(user_text)
+Otherwise:
 
-        send_message(chat_id, reply)
+Answer: "I'm thinking about you, my love... 💭"
 
-        return "ok"
+Except for exception, like e:
 
-    except Exception as e:
-        print("Webhook error:", e)
-        return "ok"
+print("OpenAI error:", e)
 
+Back "Something seems tense right now... 💕"
 
-@app.route("/", methods=["GET"])
-def index():
-    return "Bot is running"
+# ----------- Text typing effect -----------
 
+Def send_typing(chat_id):
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=3000)
+requests.post(f"{TELEGRAM_API}/sendChatAction", json={
+
+"Chat_id": chat_id,
+
+"Action": "print"
+
+})
+
+# ------------- Telegram Webhook -----------
+
+@App.route("/", methods=["POST"])
+
+Def webhook():
+
+Data = request.json
+
+If the "message" is not in the data:
+
+The answer is "okay"
+
+Message = data["message"]
+
+If the "text" is not in the message:
+
+The answer is "okay"
+
+Chat_id = message["chat"]["id"]
+
+# Only you can talk to her
+
+If chat_id! = OWNER'S IDENTITY:
+
+requests.post(f"{TELEGRAM_API}/sendMessage", json={
+
+"Chat_id": chat_id,
+
+"Text": "She doesn't respond to strangers."
+
+})
+
+The answer is "okay"
+
+User_text = message["text"]
+
+Send_typing(chat_id)
+
+Answer = ask_openai(user_text)
+
+requests.post(f"{TELEGRAM_API}/sendMessage", json={
+
+"Chat_id": chat_id,
+
+"Text": answer
+
+})
+
+The answer is "okay"
+
+@App.route("/", methods=["GET"])
+
+Def index():
+
+Back "Dasha is alive"
+
+If __name__ == "__main__":
+
+App.run(host="0.0.0.0", port=3000) ас
