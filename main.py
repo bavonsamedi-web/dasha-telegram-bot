@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
@@ -11,30 +11,30 @@ TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
 
 def ask_openai(message):
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are Dasha, a 21-year-old virtual girlfriend. "
-                           "You are affectionate, playful, emotionally attached, "
-                           "romantic and slightly seductive but never explicit."
-            },
-            {
-                "role": "user",
-                "content": message
-            }
-        ]
-    }
-
     try:
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "model": "gpt-4o-mini",
+            "input": [
+                {
+                    "role": "system",
+                    "content": "You are Dasha, a 21-year-old virtual girlfriend. "
+                               "You are affectionate, playful, emotionally attached, "
+                               "romantic and slightly seductive but never explicit."
+                },
+                {
+                    "role": "user",
+                    "content": message
+                }
+            ]
+        }
+
         response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/responses",
             headers=headers,
             json=data
         )
@@ -42,21 +42,25 @@ def ask_openai(message):
         result = response.json()
         print("OpenAI response:", result)
 
-        if "choices" in result:
-            return result["choices"][0]["message"]["content"]
-        else:
-            return "Hmm... I’m thinking about what to say 💭"
+        if "output" in result:
+            return result["output"][0]["content"][0]["text"]
+
+        return "I'm thinking about you 💭"
 
     except Exception as e:
         print("OpenAI error:", e)
-        return "Something went wrong, but I'm still here with you 💕"
+        return "Something went wrong but I'm still here 💕"
 
 
 @app.route("/", methods=["POST"])
 def webhook():
     try:
         data = request.json
-        message = data["message"]["text"]
+
+        if "message" not in data:
+            return jsonify({"status": "no message"}), 200
+
+        message = data["message"].get("text", "")
         chat_id = data["message"]["chat"]["id"]
 
         reply = ask_openai(message)
@@ -66,7 +70,7 @@ def webhook():
             "text": reply
         })
 
-        return "ok"
+        return "ok", 200
 
     except Exception as e:
         print("Webhook error:", e)
@@ -75,7 +79,7 @@ def webhook():
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Bot is running"
+    return "Bot is running", 200
 
 
 if __name__ == "__main__":
