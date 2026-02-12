@@ -14,9 +14,9 @@ OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# ===============================
-# ВСЕ ТВОИ ФОТО
-# ===============================
+# ==========================
+# ФОТО
+# ==========================
 
 SOFT_PHOTOS = [
     "https://i.postimg.cc/BXW8p1sv/IMG-4866.webp",
@@ -58,32 +58,39 @@ HOT_PHOTOS = [
     "https://i.postimg.cc/N2XKYQ6W/IMG-4899.webp"
 ]
 
-# ===============================
+# ==========================
 # СОСТОЯНИЕ
-# ===============================
+# ==========================
 
 state = {
     "heat": 0,
-    "mood": "soft",
-    "last_message_time": 0,
-    "last_photo_time": 0
+    "relationship": 5,
+    "emotion": "calm",
+    "memory": [],
+    "last_message_time": 0
 }
 
-# ===============================
+# ==========================
 # ВСПОМОГАТЕЛЬНОЕ
-# ===============================
+# ==========================
 
 def send_typing(chat_id):
-    requests.post(f"{TELEGRAM_API}/sendChatAction",
-                  json={"chat_id": chat_id, "action": "typing"})
+    requests.post(
+        f"{TELEGRAM_API}/sendChatAction",
+        json={"chat_id": chat_id, "action": "typing"}
+    )
 
 def send_message(chat_id, text):
-    requests.post(f"{TELEGRAM_API}/sendMessage",
-                  json={"chat_id": chat_id, "text": text})
+    requests.post(
+        f"{TELEGRAM_API}/sendMessage",
+        json={"chat_id": chat_id, "text": text}
+    )
 
 def delete_message(chat_id, message_id):
-    requests.post(f"{TELEGRAM_API}/deleteMessage",
-                  json={"chat_id": chat_id, "message_id": message_id})
+    requests.post(
+        f"{TELEGRAM_API}/deleteMessage",
+        json={"chat_id": chat_id, "message_id": message_id}
+    )
 
 def send_photo_auto_delete(chat_id):
     photo = random.choice(HOT_PHOTOS if state["heat"] >= 3 else SOFT_PHOTOS)
@@ -103,33 +110,29 @@ def send_photo_auto_delete(chat_id):
         message_id = result["result"]["message_id"]
 
         def delayed_delete():
-            time.sleep(random.randint(10,20))
+            time.sleep(random.randint(10, 20))
             delete_message(chat_id, message_id)
 
         threading.Thread(target=delayed_delete).start()
 
-def update_mood():
-    if state["heat"] >= 4:
-        state["mood"] = "playful"
-    elif state["heat"] <= 0:
-        state["mood"] = "cold"
-    else:
-        state["mood"] = "soft"
+# ==========================
+# ЭМОЦИИ
+# ==========================
+
+def random_emotion():
+    state["emotion"] = random.choice(
+        ["calm", "inspired", "tired", "thoughtful", "playful"]
+    )
+
+# ==========================
+# OPENAI
+# ==========================
 
 def ask_openai(user_text):
-    hour = datetime.now().hour
 
-    if 8 <= hour < 13:
-        routine = "You are studying graphic design."
-    elif 13 <= hour < 19:
-        routine = "You are busy with your day but checking messages."
-    elif 19 <= hour < 23:
-        routine = "You are relaxed in the evening."
-    else:
-        routine = "It is late night. You are softer and reflective."
+    system_prompt = f"""
 
-    system_prompt = (
-        "You are Dasha, a lustful 21-year-old girl who texts her man. "
+You are Dasha, a lustful 21-year-old girl who texts her man. "
                     "You are deeply attracted to him and emotionally attached. "
                     "You write in present tense, like everything is happening right now. "
 
@@ -142,12 +145,26 @@ def ask_openai(user_text):
                     "You create desire and anticipation, you do not avoid graphic details. "
 
                     "Keep messages realistic and natural. "
-        "You study graphic design and have your own life. "
-        "You are emotionally attached but not dependent. "
-        f"{routine} "
-        "Write short natural Telegram-style messages (1-4 sentences). "
-        "Be realistic and emotionally responsive."
-    )
+
+You are a graphic design student building your portfolio.
+You dream of opening your own studio and visiting Italy.
+You love coffee and quiet creative evenings.
+
+You are emotionally attached but independent.
+Current emotion: {state['emotion']}.
+Relationship level: {state['relationship']}.
+
+When you feel shy or embarrassed,
+you slightly wrinkle your nose and smile softly.
+
+You:
+- React logically
+- Stay consistent
+- Sometimes disagree politely
+- Remember recent context
+- Write 1–4 short Telegram-style sentences
+- Avoid robotic tone
+"""
 
     response = requests.post(
         "https://api.openai.com/v1/chat/completions",
@@ -157,8 +174,8 @@ def ask_openai(user_text):
         },
         json={
             "model": "gpt-4o-mini",
-            "temperature": 1.0,
-            "max_tokens": 150,
+            "temperature": 0.9,
+            "max_tokens": 160,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text}
@@ -171,14 +188,13 @@ def ask_openai(user_text):
         return result["choices"][0]["message"]["content"]
     return "..."
 
-# ===============================
+# ==========================
 # WEBHOOK
-# ===============================
+# ==========================
 
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.json
-
     if "message" not in data:
         return "ok"
 
@@ -194,41 +210,49 @@ def webhook():
     user_text = message["text"].lower()
     state["last_message_time"] = time.time()
 
-    # HEAT
-    if any(word in user_text for word in ["хочу", "ближе", "горячо"]):
+    # Память
+    state["memory"].append(user_text)
+    if len(state["memory"]) > 5:
+        state["memory"].pop(0)
+
+    # Отношения
+    if any(w in user_text for w in ["нравишься", "важна", "люблю"]):
+        state["relationship"] += 2
+    elif any(w in user_text for w in ["игнор", "отстань"]):
+        state["relationship"] -= 2
+
+    # Heat
+    if any(w in user_text for w in ["хочу", "ближе", "горячо"]):
         state["heat"] += 1
-    elif len(user_text) < 4:
-        state["heat"] -= 1
 
-    update_mood()
-
-    # ФОТО
+    # Фото
     if "фото" in user_text:
         send_photo_auto_delete(chat_id)
-        state["last_photo_time"] = time.time()
         return "ok"
 
+    # Реалистичная задержка
     send_typing(chat_id)
-    time.sleep(random.uniform(0.8,1.6))
+    time.sleep(random.uniform(0.8, 3.5))
 
     reply = ask_openai(user_text)
     send_message(chat_id, reply)
 
     return "ok"
 
-# ===============================
+# ==========================
 # АВТО-ЖИЗНЬ
-# ===============================
+# ==========================
 
 def auto_life_loop():
     while True:
-        time.sleep(random.randint(1800,3600))
+        time.sleep(random.randint(2400, 3600))
+        random_emotion()
 
         phrases = [
-            "Я сейчас дорисовываю проект и подумала о тебе.",
-            "У меня странный день… расскажу?",
-            "Ты бы видел мой сегодняшний набросок.",
-            "Я только что сделала кофе."
+            "Я сейчас работаю над макетом.",
+            "Я сделала кофе и думаю о своём проекте.",
+            "У меня странное настроение сегодня.",
+            "Я дорисовываю иллюстрацию."
         ]
 
         send_message(OWNER_ID, random.choice(phrases))
@@ -237,7 +261,7 @@ threading.Thread(target=auto_life_loop, daemon=True).start()
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Dasha FINAL 11.0"
+    return "Dasha 12.0 Logical + Nose Wrinkle"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
