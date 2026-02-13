@@ -4,22 +4,26 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID"))
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
-if not TELEGRAM_TOKEN:
-    raise Exception("TELEGRAM_TOKEN not set")
+TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
-if not OPENAI_API_KEY:
-    raise Exception("OPENAI_API_KEY not set")
+# ======= TELEGRAM SEND =======
+def send_message(chat_id, text):
+    requests.post(
+        f"{TELEGRAM_API}/sendMessage",
+        json={
+            "chat_id": chat_id,
+            "text": text
+        }
+    )
 
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-
-
-def ask_openai(user_text):
+# ======= OPENAI =======
+def ask_ai(user_text):
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Authorization": f"Bearer {OPENAI_KEY}",
         "Content-Type": "application/json"
     }
 
@@ -28,58 +32,47 @@ def ask_openai(user_text):
         "messages": [
             {
                 "role": "system",
-                "content": "Ты девушка по имени Даша. Ты живая, естественная, умная. Отвечаешь развернуто, логично, без лишних вопросов. Общение теплое, живое."
+                "content": "You are Dasha. You are warm, alive, feminine, playful. You speak naturally and emotionally."
             },
             {
                 "role": "user",
                 "content": user_text
             }
-        ],
-        "temperature": 0.9
+        ]
     }
 
-    response = requests.post(OPENAI_URL, headers=headers, json=data)
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers=headers,
+        json=data
+    )
 
-    if response.status_code != 200:
-        print("OpenAI error:", response.text)
-        return "Секунду… я задумалась."
+    return r.json()["choices"][0]["message"]["content"]
 
-    return response.json()["choices"][0]["message"]["content"]
-
-
+# ======= WEBHOOK =======
 @app.route("/", methods=["POST"])
 def webhook():
     try:
-        data = request.get_json()
+        data = request.json
 
-        if not data:
-            return "ok", 200
+        if "message" not in data:
+            return "OK", 200
 
-        message = data.get("message")
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
 
-        if not message:
-            return "ok", 200
+        if chat_id != OWNER_ID:
+            return "OK", 200
 
-        chat_id = message["chat"]["id"]
-        text = message.get("text")
+        reply = ask_ai(text)
+        send_message(chat_id, reply)
 
-        if not text:
-            return "ok", 200
-
-        reply = ask_openai(text)
-
-        requests.post(TELEGRAM_API, json={
-            "chat_id": chat_id,
-            "text": reply
-        })
-
-        return "ok", 200
+        return "OK", 200
 
     except Exception as e:
-        print("Webhook error:", e)
-        return "ok", 200
+        print("ERROR:", e)
+        return "OK", 200
 
-
+# ======= START =======
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=8080)
