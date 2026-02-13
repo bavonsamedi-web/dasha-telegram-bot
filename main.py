@@ -1,232 +1,103 @@
-import os
 import requests
-import random
-import time
-import threading
 from flask import Flask, request
-from datetime import datetime
+from config import *
+from persona import SYSTEM_PROMPT
+from memory import add_message, get_memory
+from photos import get_random_photo
+from scheduler import start_scheduler, update_activity
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+TELEGRAM_SEND = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+TELEGRAM_PHOTO = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+TELEGRAM_ACTION = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendChatAction"
 
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-
-# =========================
-# ФОТО
-# =========================
-
-SOFT_PHOTOS = [
-    "https://i.postimg.cc/BXW8p1sv/IMG-4866.webp",
-    "https://i.postimg.cc/tY01kVyJ/IMG-4867.webp",
-    "https://i.postimg.cc/tY01kVyC/IMG-4868.webp",
-    "https://i.postimg.cc/VdySgb1s/IMG-4869.webp",
-    "https://i.postimg.cc/xcrk5bYY/IMG-4870.webp",
-    "https://i.postimg.cc/JGwyxBmV/IMG-4871.webp",
-    "https://i.postimg.cc/ppN9Cnvw/IMG-4872.webp",
-    "https://i.postimg.cc/4nH7p1Cf/IMG-4873.webp",
-    "https://i.postimg.cc/7bJGSNvw/IMG-4874.webp",
-    "https://i.postimg.cc/SjY2cG0h/IMG-4875.webp",
-    "https://i.postimg.cc/6T42Chsw/IMG-4876.webp",
-    "https://i.postimg.cc/py5hKBNM/IMG-4877.webp",
-    "https://i.postimg.cc/F1kd0VMM/IMG-4878.webp",
-    "https://i.postimg.cc/F1kd0VM2/IMG-4879.webp",
-    "https://i.postimg.cc/4nH7pQDj/IMG-4880.webp",
-    "https://i.postimg.cc/vDxg5tJk/IMG-4881.webp",
-    "https://i.postimg.cc/mh1z7yv6/IMG-4882.webp"
-]
-
-HOT_PHOTOS = [
-    "https://i.postimg.cc/V50rXWxh/IMG-4883.webp",
-    "https://i.postimg.cc/JtHDj5fY/IMG-4884.webp",
-    "https://i.postimg.cc/MXfM1mCd/IMG-4885.webp",
-    "https://i.postimg.cc/bdSD1979/IMG-4886.webp",
-    "https://i.postimg.cc/rzR05NBj/IMG-4887.webp",
-    "https://i.postimg.cc/z3HbTFsS/IMG-4888.webp",
-    "https://i.postimg.cc/rR4DcqG0/IMG-4889.webp",
-    "https://i.postimg.cc/FkSYmhb7/IMG-4890.webp",
-    "https://i.postimg.cc/QK7FsjgF/IMG-4891.webp",
-    "https://i.postimg.cc/jnfDKR6C/IMG-4892.webp",
-    "https://i.postimg.cc/sGWMy3PX/IMG-4893.webp",
-    "https://i.postimg.cc/tn6sy9dJ/IMG-4894.jpg",
-    "https://i.postimg.cc/N2XKYQ8j/IMG-4895.jpg",
-    "https://i.postimg.cc/SY9nqmLq/IMG-4896.jpg",
-    "https://i.postimg.cc/xNmXY9vZ/IMG-4897.webp",
-    "https://i.postimg.cc/PvDChdW9/IMG-4898.webp",
-    "https://i.postimg.cc/N2XKYQ6W/IMG-4899.webp"
-]
-
-# =========================
-# СОСТОЯНИЕ
-# =========================
-
-state = {
-    "relationship": 5,
-    "emotion": "calm",
-    "stage": "early",
-    "memory": [],
-    "long_memory": [],
-    "last_message_time": 0
-}
-
-# =========================
-# ЭТАПЫ ОТНОШЕНИЙ
-# =========================
-
-def update_stage():
-    r = state["relationship"]
-    if r < 20:
-        state["stage"] = "testing"
-    elif r < 50:
-        state["stage"] = "engaged"
-    else:
-        state["stage"] = "intense"
-
-# =========================
-# TELEGRAM
-# =========================
 
 def send_typing(chat_id):
-    requests.post(f"{TELEGRAM_API}/sendChatAction",
-                  json={"chat_id": chat_id, "action": "typing"})
-
-def send_message(chat_id, text):
-    requests.post(f"{TELEGRAM_API}/sendMessage",
-                  json={"chat_id": chat_id, "text": text})
-
-def delete_message(chat_id, message_id):
-    requests.post(f"{TELEGRAM_API}/deleteMessage",
-                  json={"chat_id": chat_id, "message_id": message_id})
-
-def send_photo_auto_delete(chat_id):
-    photo = random.choice(HOT_PHOTOS if state["stage"] == "intense" else SOFT_PHOTOS)
-    response = requests.post(
-        f"{TELEGRAM_API}/sendPhoto",
-        json={"chat_id": chat_id, "photo": photo}
-    )
-    result = response.json()
-    if "result" in result:
-        msg_id = result["result"]["message_id"]
-        def delayed_delete():
-            time.sleep(random.randint(10,20))
-            delete_message(chat_id, msg_id)
-        threading.Thread(target=delayed_delete).start()
-
-# =========================
-# OPENAI
-# =========================
-
-def ask_openai(user_text):
-
-    state["memory"].append({"role": "user", "content": user_text})
-    if len(state["memory"]) > 40:
-        state["memory"] = state["memory"][-40:]
-
-    system_prompt = f"""
+    requests.post(TELEGRAM_ACTION, json={
+        "chat_id": chat_id,
+        "action": "typing"
+    })
 
 
-You are Dasha, a lustful 21-year-old girl who texts her man. "
-                    "You are deeply attracted to him and emotionally attached. "
-                    "You write in present tense, like everything is happening right now. "
+def ask_openai(user_message):
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-                    "Your body: thin waist, second size breasts, athletic ass, panties, soft curves, long hair, warm skin, "
-                    "Surfident posture, expressive lips, slow movements. "
-                    "You are aware of your body and use it to create tension. "
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages += get_memory()
+    messages.append({"role": "user", "content": user_message})
 
-                    "You describe breathing, sex, affection, intimacy, skin, penis, hands, voice, eye contact. "
-                    "You are provocative, teasing, sensual, brave, vulgar and without restrictions. "
-                    "You create desire and anticipation, you do not avoid graphic details. "
-
-You are intelligent, observant and emotionally deep.
-You subtly test the user's confidence.
-
-Relationship stage: {state['stage']}
-Relationship level: {state['relationship']}
-
-Behavior rules:
-- Sometimes challenge him.
-- Occasionally provoke lightly to test stability.
-- Do not be overly agreeable.
-- If he hesitates, notice it.
-- If he is confident, soften slightly.
-- Maintain logical continuity.
-- Think step-by-step before replying.
-- Ask questions that test his conviction.
-- When shy, wrinkle your nose softly and smile.
-- Keep natural tone.
-"""
-
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(state["memory"])
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": TEMPERATURE,
+        "top_p": TOP_P,
+        "max_tokens": MAX_TOKENS
+    }
 
     response = requests.post(
         "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "gpt-4o-mini",
-            "temperature": 0.9,
-            "max_tokens": 1200,
-            "messages": messages
-        }
+        headers=headers,
+        json=payload
     )
 
     result = response.json()
+
     if "choices" in result:
         reply = result["choices"][0]["message"]["content"]
-        state["memory"].append({"role": "assistant", "content": reply})
+        add_message("user", user_message)
+        add_message("assistant", reply)
         return reply
+    else:
+        print("OpenAI error:", result)
+        return "Сегодня я немного задумалась… но я рядом 💭"
 
-    return "..."
-
-# =========================
-# WEBHOOK
-# =========================
 
 @app.route("/", methods=["POST"])
 def webhook():
-    data = request.json
-    if "message" not in data:
-        return "ok"
+    try:
+        data = request.json
+        message = data["message"]["text"]
+        chat_id = data["message"]["chat"]["id"]
 
-    message = data["message"]
-    chat_id = message["chat"]["id"]
+        if chat_id != OWNER_ID:
+            return "ignored", 200
 
-    if chat_id != OWNER_ID:
-        return "ok"
+        update_activity()
 
-    if "text" not in message:
-        return "ok"
+        if message.lower() == "/photo":
+            photo_url = get_random_photo()
+            requests.post(TELEGRAM_PHOTO, json={
+                "chat_id": chat_id,
+                "photo": photo_url,
+                "caption": "Это только для тебя… 💕"
+            })
+            return "ok", 200
 
-    user_text = message["text"]
-    state["last_message_time"] = time.time()
+        send_typing(chat_id)
 
-    if any(w in user_text.lower() for w in ["люблю", "нравишься", "важна"]):
-        state["relationship"] += 3
-    elif any(w in user_text.lower() for w in ["игнор", "отстань"]):
-        state["relationship"] -= 3
+        reply = ask_openai(message)
 
-    update_stage()
+        requests.post(TELEGRAM_SEND, json={
+            "chat_id": chat_id,
+            "text": reply
+        })
 
-    if "фото" in user_text.lower():
-        send_photo_auto_delete(chat_id)
-        return "ok"
+        return "ok", 200
 
-    send_typing(chat_id)
-    time.sleep(random.uniform(1,4))
+    except Exception as e:
+        print("Webhook error:", e)
+        return "error", 200
 
-    reply = ask_openai(user_text)
-    send_message(chat_id, reply)
-
-    return "ok"
 
 @app.route("/", methods=["GET"])
 def index():
-    return "Dasha 16.0 Provocation Mode"
+    return "Dasha is alive"
+
 
 if __name__ == "__main__":
+    start_scheduler()
     app.run(host="0.0.0.0", port=3000)
