@@ -4,47 +4,46 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OWNER_ID = os.getenv("OWNER_ID")
 
 if not TELEGRAM_TOKEN:
-    raise RuntimeError("TELEGRAM_TOKEN not set")
+    raise Exception("TELEGRAM_TOKEN not set!")
 
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+    requests.post(url, json=payload)
 
-
-@app.route("/", methods=["GET"])
-def health():
+@app.route("/")
+def home():
     return "Bot is alive", 200
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        data = request.get_json()
+    data = request.get_json()
 
-        if not data:
-            return jsonify({"status": "no data"}), 200
+    if not data:
+        return jsonify({"status": "no data"}), 200
 
-        if "message" in data:
-            chat_id = data["message"]["chat"]["id"]
-            text = data["message"].get("text", "")
+    message = data.get("message")
+    if not message:
+        return jsonify({"status": "no message"}), 200
 
-            send_message(chat_id, f"Ты написал: {text}")
+    chat_id = message["chat"]["id"]
+    text = message.get("text", "")
 
-        return jsonify({"status": "ok"}), 200
+    if text == "/start":
+        send_message(chat_id, "Бот работает 🚀")
+    else:
+        send_message(chat_id, f"Ты написал: {text}")
 
-    except Exception as e:
-        print("ERROR:", str(e))
-        return jsonify({"error": str(e)}), 200
+    return jsonify({"status": "ok"}), 200
 
 
-def send_message(chat_id, text):
-    requests.post(
-        f"{TELEGRAM_API}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": text
-        },
-        timeout=10
-    )
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
