@@ -2,16 +2,17 @@ import os
 import requests
 from flask import Flask, request
 
+app = Flask(__name__)
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-app = Flask(__name__)
+# -----------------------
+# OpenAI запрос
+# -----------------------
 
-# ------------------------
-# OpenAI
-# ------------------------
+def ask_openai(text):
 
-def ask_openai(message):
     url = "https://api.openai.com/v1/chat/completions"
 
     headers = {
@@ -19,62 +20,64 @@ def ask_openai(message):
         "Content-Type": "application/json"
     }
 
-    data = {
+    payload = {
         "model": "gpt-4o-mini",
         "messages": [
             {
                 "role": "system",
-                "content": "Ты девушка по имени Даша. Общайся живо, естественно."
+                "content": "Ты девушка по имени Даша. Отвечай живо, естественно, без формальностей."
             },
             {
                 "role": "user",
-                "content": message
+                "content": text
             }
         ]
     }
 
-    response = requests.post(url, headers=headers, json=data)
+    r = requests.post(url, headers=headers, json=payload)
 
-    if response.status_code != 200:
-        print("OpenAI ERROR:", response.text)
-        return "У меня что-то зависло в голове… Попробуй еще раз ❤️"
+    if r.status_code != 200:
+        print("OpenAI error:", r.text)
+        return "Я задумалась… Напиши еще раз ❤️"
 
-    return response.json()["choices"][0]["message"]["content"]
+    return r.json()["choices"][0]["message"]["content"]
 
 
-# ------------------------
+# -----------------------
 # WEBHOOK
-# ------------------------
+# -----------------------
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
-    data = request.get_json()
+    data = request.get_json(force=True)
 
-    if not data:
-        return "OK", 200
+    print("Incoming:", data)
 
     if "message" not in data:
-        return "OK", 200
+        return "ok", 200
 
     chat_id = data["message"]["chat"]["id"]
     text = data["message"].get("text", "")
 
+    if not text:
+        return "ok", 200
+
     answer = ask_openai(text)
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    send_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-    requests.post(telegram_url, json={
+    requests.post(send_url, json={
         "chat_id": chat_id,
         "text": answer
     })
 
-    return "OK", 200
+    return "ok", 200
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Bot is running", 200
+    return "Server is running", 200
 
 
 if __name__ == "__main__":
