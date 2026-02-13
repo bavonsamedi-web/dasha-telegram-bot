@@ -1,6 +1,6 @@
-fastapi==0.110.0
-uvicorn==0.29.0
-gunicorn==21.2.0
+fastapi
+uvicorn
+gunicorn
 python-telegram-bot==20.7
 openai
 requests
