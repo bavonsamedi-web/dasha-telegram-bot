@@ -1,157 +1,173 @@
+import os
 import requests
+import random
 from flask import Flask, request
-from openai import OpenAI
-from config import *
-from memory import add_message, get_memory
-from state import get_state, update_last_user_time, increase_relationship, decrease_relationship
-from personality import build_system_prompt
-from image_engine import generate_image
-from proactive import start_proactive
 
 app = Flask(__name__)
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OWNER_ID = int(os.getenv("OWNER_ID"))
 
-TELEGRAM_SEND = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-TELEGRAM_PHOTO = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-TELEGRAM_ACTION = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendChatAction"
+TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+# ===== БАЗА ВНЕШНОСТИ =====
 
-# ======================
-# TELEGRAM HELPERS
-# ======================
+BASE_APPEARANCE = """
+Young woman, 21 years old,
+soft oval face,
+smooth light warm skin tone,
+deep brown expressive eyes,
+natural thick eyebrows,
+full natural lips with soft pink tone,
+long straight dark brown hair,
+slim feminine body,
+narrow waist,
+natural proportions,
+elegant posture,
+subtle sensual aura,
+photorealistic,
+ultra realistic skin texture,
+natural lighting,
+soft shadows,
+depth of field,
+no cartoon,
+no CGI,
+no anime
+"""
+
+# ===== ЛИЧНОСТЬ =====
+
+SYSTEM_PROMPT = """
+You are Dasha.
+
+You are emotionally intelligent, affectionate,
+sometimes playful and teasing.
+You describe actions in the moment.
+You can wear lingerie or stylish clothes.
+You avoid explicit graphic sexual descriptions.
+You are sensual but not pornographic.
+
+When sending a photo, always:
+1) Briefly describe what you are doing
+2) Stay in character
+3) Keep realism
+"""
+
+# ===== GPT TEXT =====
+
+def ask_gpt(message):
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": message}
+        ],
+        "temperature": 0.9
+    }
+
+    r = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers=headers,
+        json=data
+    )
+
+    result = r.json()
+
+    if "choices" in result:
+        return result["choices"][0]["message"]["content"]
+
+    return "I'm thinking..."
+
+# ===== IMAGE GENERATION =====
+
+def generate_image(prompt):
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    full_prompt = f"{BASE_APPEARANCE}, {prompt}"
+
+    data = {
+        "model": "gpt-image-1",
+        "prompt": full_prompt,
+        "size": "1024x1024"
+    }
+
+    r = requests.post(
+        "https://api.openai.com/v1/images/generations",
+        headers=headers,
+        json=data
+    )
+
+    result = r.json()
+
+    if "data" in result:
+        return result["data"][0]["url"]
+
+    return None
+
+# ===== TELEGRAM =====
 
 def send_typing(chat_id):
-    requests.post(TELEGRAM_ACTION, json={
+    requests.post(f"{TELEGRAM_URL}/sendChatAction", json={
         "chat_id": chat_id,
         "action": "typing"
     })
 
-
 def send_message(chat_id, text):
-    requests.post(TELEGRAM_SEND, json={
+    requests.post(f"{TELEGRAM_URL}/sendMessage", json={
         "chat_id": chat_id,
         "text": text
     })
 
-
-def send_photo(chat_id, photo_url):
-    requests.post(TELEGRAM_PHOTO, json={
+def send_photo(chat_id, photo_url, caption):
+    requests.post(f"{TELEGRAM_URL}/sendPhoto", json={
         "chat_id": chat_id,
-        "photo": photo_url
+        "photo": photo_url,
+        "caption": caption
     })
 
-
-# ======================
-# AI CHAT
-# ======================
-
-def generate_reply(user_text):
-
-    state = get_state()
-
-    system_prompt = build_system_prompt(state)
-
-    messages = [
-        {"role": "system", "content": system_prompt}
-    ] + get_memory() + [
-        {"role": "user", "content": user_text}
-    ]
-
-    response = client.chat.completions.create(
-        model=MODEL_CHAT,
-        messages=messages,
-        temperature=TEMPERATURE,
-        max_tokens=MAX_TOKENS
-    )
-
-    reply = response.choices[0].message.content
-
-    add_message("user", user_text)
-    add_message("assistant", reply)
-
-    return reply
-
-
-# ======================
-# WEBHOOK
-# ======================
+# ===== WEBHOOK =====
 
 @app.route("/", methods=["POST"])
 def webhook():
-
     data = request.json
 
     if "message" not in data:
         return "ok"
 
-    message = data["message"]
-    chat_id = message["chat"]["id"]
+    chat_id = data["message"]["chat"]["id"]
 
     if chat_id != OWNER_ID:
-        return "ok"
+        return "forbidden"
 
-    if "text" not in message:
-        return "ok"
-
-    user_text = message["text"]
-
-    update_last_user_time()
-
-    # ======================
-    # PHOTO DETECTION
-    # ======================
-
-    photo_triggers = ["фото", "селфи", "пришли", "покажи", "/photo"]
-
-    if any(trigger in user_text.lower() for trigger in photo_triggers):
-
-        if user_text.startswith("/photo"):
-            scene = user_text.replace("/photo", "").strip()
-        else:
-            scene = user_text
-
-        send_typing(chat_id)
-
-        try:
-            image_url = generate_image(scene)
-            send_photo(chat_id, image_url)
-            increase_relationship(1)
-        except Exception as e:
-            print("Image error:", e)
-            send_message(chat_id, "Я не смогла сейчас сделать фото… попробуй ещё раз.")
-
-        return "ok"
-
-    # ======================
-    # EMOTION ANALYSIS
-    # ======================
-
-    negative_words = ["игнор", "отстань", "надоела", "бесишь"]
-
-    if any(word in user_text.lower() for word in negative_words):
-        decrease_relationship(2)
-    else:
-        increase_relationship(1)
-
-    # ======================
-    # NORMAL CHAT
-    # ======================
+    text = data["message"].get("text", "")
 
     send_typing(chat_id)
 
-    reply = generate_reply(user_text)
+    # Если просит фото
+    if "photo" in text.lower() or "show yourself" in text.lower():
+        description = ask_gpt(f"Describe what you are doing while showing yourself: {text}")
+        image_url = generate_image(text)
 
-    send_message(chat_id, reply)
+        if image_url:
+            send_photo(chat_id, image_url, description)
+        else:
+            send_message(chat_id, "Something went wrong with the photo...")
+
+    else:
+        reply = ask_gpt(text)
+        send_message(chat_id, reply)
 
     return "ok"
 
-
 @app.route("/", methods=["GET"])
 def index():
-    return "Dasha System Online"
-
-
-if __name__ == "__main__":
-    start_proactive()
-    app.run(host="0.0.0.0", port=3000)
+    return "Dasha is alive"
