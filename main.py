@@ -4,35 +4,32 @@ import requests
 
 app = Flask(__name__)
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID"))
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OWNER_ID = int(os.environ.get("OWNER_ID"))
 
 def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {
+    requests.post(url, json={
         "chat_id": chat_id,
         "text": text
-    }
-    requests.post(url, json=data)
+    })
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot is alive", 200
 
 @app.route("/", methods=["POST"])
 def webhook():
     try:
-        data = request.get_json()
+        update = request.get_json()
+        print("UPDATE:", update)
 
-        if not data:
-            return "ok", 200
+        if "message" in update:
+            chat_id = update["message"]["chat"]["id"]
+            text = update["message"].get("text", "")
 
-        if "message" in data:
-            chat_id = data["message"]["chat"]["id"]
-            text = data["message"].get("text", "")
-
-            print("Chat ID:", chat_id)
-
-            if chat_id != OWNER_ID:
-                return "ok", 200
-
-            send_message(chat_id, f"Ты написал: {text}")
+            if chat_id == OWNER_ID:
+                send_message(chat_id, f"Получила: {text}")
 
         return "ok", 200
 
@@ -42,4 +39,5 @@ def webhook():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    port = int(os.environ.get("PORT", 3000))
+    app.run(host="0.0.0.0", port=port)
