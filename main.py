@@ -1,30 +1,42 @@
 import os
-from flask import Flask, request, jsonify
 import requests
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+# Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN not set")
+
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-@app.route("/")
-def home():
+
+@app.route("/", methods=["GET"])
+def health():
     return "Bot is alive", 200
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
+    try:
+        data = request.get_json()
 
-    if not data:
-        return jsonify({"status": "no data"}), 200
+        if not data:
+            return jsonify({"status": "no data"}), 200
 
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
+        if "message" in data:
+            chat_id = data["message"]["chat"]["id"]
+            text = data["message"].get("text", "")
 
-        send_message(chat_id, f"Ты написал: {text}")
+            send_message(chat_id, f"Ты написал: {text}")
 
-    return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        return jsonify({"error": str(e)}), 200
 
 
 def send_message(chat_id, text):
@@ -33,9 +45,6 @@ def send_message(chat_id, text):
         json={
             "chat_id": chat_id,
             "text": text
-        }
+        },
+        timeout=10
     )
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
